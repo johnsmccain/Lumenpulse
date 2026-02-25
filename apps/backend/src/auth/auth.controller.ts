@@ -13,6 +13,7 @@ import {
   HttpException,
   HttpStatus,
   Logger,
+  ConflictException,
 } from '@nestjs/common';
 import type { Request as ExpressRequest } from 'express';
 import { AuthService } from './auth.service';
@@ -46,10 +47,47 @@ export class AuthController {
   }
 
   @Post('register')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Register a new user with email and password' })
+  @ApiResponse({
+    status: 201,
+    description: 'User registered successfully',
+    schema: {
+      properties: {
+        id: { type: 'string' },
+        email: { type: 'string' },
+        role: { type: 'string' },
+        createdAt: { type: 'string' },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'Email already registered',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid email format or password too short',
+  })
   async register(@Body() body: RegisterDto) {
+    // Check if user already exists
+    const existingUser = await this.usersService.findByEmail(body.email);
+    if (existingUser) {
+      throw new ConflictException('Email already registered');
+    }
+
+    // Hash password with bcrypt
     const hash = await bcrypt.hash(body.password, 10);
 
-    return this.usersService.create({ email: body.email, passwordHash: hash });
+    // Create user
+    const user = await this.usersService.create({
+      email: body.email,
+      passwordHash: hash,
+    });
+
+    // Return user without password
+    const { passwordHash, ...result } = user;
+    return result;
   }
 
   @Post('forgot-password')
