@@ -2,10 +2,10 @@
 Unit tests for SocialFetcher service.
 """
 
-import unittest
-from unittest.mock import Mock, patch, MagicMock
 import os
+import unittest
 from datetime import datetime, timezone
+from unittest.mock import patch
 from src.ingestion.social_fetcher import (
     SocialFetcher,
     SocialPost,

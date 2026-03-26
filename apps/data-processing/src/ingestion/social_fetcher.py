@@ -354,7 +354,7 @@ class RedditFetcher:
         self.rate_limiter = RateLimiter(
             SocialAPIConfig.REDDIT_REQUESTS_PER_MINUTE,
             60,
-            SocialAPIConfig.REDDIT_LIMIT_DELAY
+            SocialAPIConfig.REDDIT_RATE_LIMIT_DELAY
         )
 
     def fetch_subreddit(
