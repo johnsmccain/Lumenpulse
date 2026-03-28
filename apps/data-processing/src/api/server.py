@@ -7,6 +7,7 @@ from fastapi import FastAPI, HTTPException, Request, Response, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Dict, Any, Optional, List
+from datetime import datetime
 
 # Import your existing SentimentAnalyzer
 import sys
@@ -27,6 +28,7 @@ from src.security import (
 from src.ml.retraining_pipeline import run_retraining, get_last_run_status
 from src.ml.model_registry import get_registry_status
 from src.analytics.correlation_engine import CorrelationEngine
+from src.db import PostgresService
 
 # Initialize structured logger
 logger = setup_logger(__name__)
@@ -79,6 +81,12 @@ async def metrics_and_logging_middleware(request: Request, call_next):
 # Initialize your existing SentimentAnalyzer
 sentiment_analyzer = SentimentAnalyzer()
 
+try:
+    postgres_service = PostgresService()
+except Exception as exc:
+    postgres_service = None
+    logger.warning("PostgreSQL service unavailable for /news endpoint: %s", exc)
+
 
 # Request/Response models
 class AnalyzeRequest(BaseModel):
@@ -106,6 +114,21 @@ class HealthResponse(BaseModel):
     timestamp: str
     service: str
 
+
+class NewsArticleResponse(BaseModel):
+    article_id: str
+    title: str
+    content: Optional[str] = None
+    summary: Optional[str] = None
+    source: Optional[str] = None
+    url: Optional[str] = None
+    published_at: Optional[str] = None
+    primary_asset: Optional[str] = None
+    asset_codes: List[str] = []
+    categories: List[str] = []
+    keywords: List[str] = []
+    detected_entities: List[str] = []
+
 @app.get("/metrics")
 async def metrics():
     """Expose Prometheus metrics"""
@@ -121,6 +144,7 @@ async def root(request: Request) -> Dict[str, Any]:
         "endpoints": {
             "GET /health": "Health check (no auth required)",
             "GET /metrics": "Prometheus metrics (no auth required)",
+            "GET /news": "Get recent news with optional ?entity=... filter (requires X-API-Key header)",
             "POST /analyze": "Analyze text sentiment (requires X-API-Key header)",
             "GET /analyze": "Get asset-specific sentiment analysis (requires X-API-Key header)",
             "POST /analyze-batch": "Batch analyze multiple texts (requires X-API-Key header)",
@@ -134,13 +158,68 @@ async def root(request: Request) -> Dict[str, Any]:
 @limiter.limit("30/minute") if limiter else lambda x: x
 async def health_check(request: Request) -> HealthResponse:
     """Health check endpoint for monitoring"""
-    from datetime import datetime
-
     return HealthResponse(
         status="healthy",
         timestamp=datetime.now().isoformat(),
         service="sentiment-analysis",
     )
+
+
+@app.get("/news", response_model=List[NewsArticleResponse])
+@limiter.limit("30/minute") if limiter else lambda x: x
+async def get_news(
+    request_context: Request,
+    limit: int = Query(50, ge=1, le=500),
+    hours: int = Query(24, ge=1, le=168),
+    asset: Optional[str] = Query(None, description="Optional primary asset code filter"),
+    entity: Optional[str] = Query(
+        None,
+        description="Optional detected entity filter (example: Soroban)",
+    ),
+) -> List[NewsArticleResponse]:
+    """Return recent articles with optional asset and entity filters."""
+    if postgres_service is None:
+        raise HTTPException(status_code=503, detail="Database service unavailable")
+
+    try:
+        articles = postgres_service.get_recent_articles(
+            limit=limit,
+            hours=hours,
+            asset=asset,
+            entity=entity,
+        )
+
+        logger.info(
+            "Retrieved %d news articles | hours=%d | asset=%s | entity=%s | client_ip=%s",
+            len(articles),
+            hours,
+            asset,
+            entity,
+            request_context.client.host,
+        )
+
+        return [
+            NewsArticleResponse(
+                article_id=article.article_id,
+                title=article.title,
+                content=article.content,
+                summary=article.summary,
+                source=article.source,
+                url=article.url,
+                published_at=(
+                    article.published_at.isoformat() if article.published_at else None
+                ),
+                primary_asset=article.primary_asset,
+                asset_codes=article.asset_codes or [],
+                categories=article.categories or [],
+                keywords=article.keywords or [],
+                detected_entities=article.detected_entities or [],
+            )
+            for article in articles
+        ]
+    except Exception as exc:
+        logger.error("Error retrieving news: %s", str(exc), exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch news articles")
 
 
 @app.post("/analyze", response_model=AnalyzeResponse)
