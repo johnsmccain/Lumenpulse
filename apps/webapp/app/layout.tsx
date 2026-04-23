@@ -1,6 +1,7 @@
-import { StellarProvider } from "./providers";
+import { Providers } from "./providers";
 import { StarsAnimation } from "@/components/stars-animation";
 import { PWAInstaller } from "@/components/pwa-installer";
+import { getThemeInitScriptHTML } from "@/lib/theme-init-script";
 import "./globals.css";
 import type { Metadata } from "next";
 import {
@@ -127,6 +128,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
+        {/* Theme initialization script - must execute before React hydration to prevent FOUC */}
+        {/* Requirements: 9.1, 9.2, 9.3 */}
+        <script dangerouslySetInnerHTML={getThemeInitScriptHTML()} />
+        
         {/* PWA Meta Tags */}
         <meta name="application-name" content="LumenPulse" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -161,11 +166,11 @@ export default function RootLayout({
       <body
         className={`${inter.variable} ${orbitron.variable} ${spaceMono.variable} ${chakraPetch.variable} ${poppins.variable} font-inter bg-background text-foreground`}
       >
-        <StellarProvider>
+        <Providers>
           <StarsAnimation />
           {children}
           <PWAInstaller />
-        </StellarProvider>
+        </Providers>
       </body>
     </html>
   );
