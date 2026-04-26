@@ -46,7 +46,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
 
   onModuleDestroy() {
     if (this.bot) {
-      this.bot.stopPolling();
+      void this.bot.stopPolling();
       this.logger.log('Telegram bot stopped');
     }
   }
@@ -54,21 +54,21 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
   private registerHandlers() {
     if (!this.bot) return;
 
-    this.bot.onText(/\/start/, (msg) => this.handleStart(msg));
-    this.bot.onText(/\/status/, (msg) => this.handleStatus(msg));
-    this.bot.onText(/\/price (.+)/, (msg, match) => this.handlePrice(msg, match));
-    this.bot.onText(/\/price$/, (msg) => this.handlePrice(msg, null));
-    this.bot.onText(/\/sentiment/, (msg) => this.handleSentiment(msg));
-    this.bot.onText(/\/trend/, (msg) => this.handleTrend(msg));
-    this.bot.onText(/\/subscribe (.+)/, (msg, match) => this.handleSubscribe(msg, match));
-    this.bot.onText(/\/subscribe$/, (msg) => this.handleSubscribe(msg, null));
-    this.bot.onText(/\/unsubscribe (.+)/, (msg, match) => this.handleUnsubscribe(msg, match));
-    this.bot.onText(/\/unsubscribe$/, (msg) => this.handleUnsubscribe(msg, null));
-    this.bot.onText(/\/silence (.+)/, (msg, match) => this.handleSilence(msg, match));
-    this.bot.onText(/\/silence$/, (msg) => this.handleSilence(msg, null));
-    this.bot.onText(/\/unsilence/, (msg) => this.handleUnsilence(msg));
-    this.bot.onText(/\/subscriptions/, (msg) => this.handleSubscriptions(msg));
-    this.bot.onText(/\/help/, (msg) => this.handleHelp(msg));
+    this.bot.onText(/\/start/, (msg) => { void this.handleStart(msg); });
+    this.bot.onText(/\/status/, (msg) => { void this.handleStatus(msg); });
+    this.bot.onText(/\/price (.+)/, (msg, match) => { void this.handlePrice(msg, match); });
+    this.bot.onText(/\/price$/, (msg) => { void this.handlePrice(msg, null); });
+    this.bot.onText(/\/sentiment/, (msg) => { void this.handleSentiment(msg); });
+    this.bot.onText(/\/trend/, (msg) => { void this.handleTrend(msg); });
+    this.bot.onText(/\/subscribe (.+)/, (msg, match) => { void this.handleSubscribe(msg, match); });
+    this.bot.onText(/\/subscribe$/, (msg) => { void this.handleSubscribe(msg, null); });
+    this.bot.onText(/\/unsubscribe (.+)/, (msg, match) => { void this.handleUnsubscribe(msg, match); });
+    this.bot.onText(/\/unsubscribe$/, (msg) => { void this.handleUnsubscribe(msg, null); });
+    this.bot.onText(/\/silence (.+)/, (msg, match) => { void this.handleSilence(msg, match); });
+    this.bot.onText(/\/silence$/, (msg) => { void this.handleSilence(msg, null); });
+    this.bot.onText(/\/unsilence/, (msg) => { void this.handleUnsilence(msg); });
+    this.bot.onText(/\/subscriptions/, (msg) => { void this.handleSubscriptions(msg); });
+    this.bot.onText(/\/help/, (msg) => { void this.handleHelp(msg); });
 
     this.bot.on('polling_error', (error) => {
       this.logger.error('Telegram polling error', error);

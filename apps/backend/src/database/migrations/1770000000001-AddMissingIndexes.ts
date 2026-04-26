@@ -84,10 +84,10 @@ export class AddMissingIndexes1770000000001 implements MigrationInterface {
     indexName: string,
     columns: string[],
   ): Promise<void> {
-    const exists = await queryRunner.query(
+    const exists: Array<Record<string, unknown>> = await queryRunner.query(
       `SELECT 1 FROM pg_indexes WHERE indexname = '${indexName}'`,
     );
-    if (exists && exists.length > 0) return;
+    if (exists.length > 0) return;
 
     const cols = columns.map((c) => `"${c}"`).join(', ');
     await queryRunner.query(
@@ -97,13 +97,13 @@ export class AddMissingIndexes1770000000001 implements MigrationInterface {
 
   private async dropIndex(
     queryRunner: QueryRunner,
-    table: string,
+    _table: string,
     indexName: string,
   ): Promise<void> {
-    const exists = await queryRunner.query(
+    const exists: Array<Record<string, unknown>> = await queryRunner.query(
       `SELECT 1 FROM pg_indexes WHERE indexname = '${indexName}'`,
     );
-    if (!exists || exists.length === 0) return;
+    if (exists.length === 0) return;
 
     await queryRunner.query(
       `DROP INDEX "public"."${indexName}"`,

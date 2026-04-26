@@ -3,6 +3,7 @@ import {
   Column,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
+  Index,
 } from 'typeorm';
 
 @Entity('stellar_sync_checkpoints')
