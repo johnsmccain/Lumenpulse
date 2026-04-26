@@ -6,7 +6,10 @@ mod multisig;
 mod storage;
 
 use errors::ContributorError;
-use events::{AdminChangedEvent, GaslessRegistrationEvent, MultisigConfiguredEvent, UpgradedEvent};
+use events::{
+    AdminChangedEvent, BadgeGrantedEvent, BadgeRevokedEvent, GaslessRegistrationEvent,
+    MultisigConfiguredEvent, UpgradedEvent,
+};
 use multisig::{
     cancel, consume_approval, expire, get_config, get_proposal, propose, sign, validate_config,
     MultisigConfig, ProposalAction, ProposalStatus, Signer,
@@ -16,7 +19,7 @@ use soroban_sdk::xdr::FromXdr;
 use soroban_sdk::{
     contract, contractimpl, Address, Bytes, BytesN, Env, IntoVal, String, Symbol, Vec,
 };
-use storage::{ContributorData, DataKey};
+use storage::{Badge, ContributorData, ContributorTier, DataKey};
 
 #[contract]
 pub struct ContributorRegistryContract;
@@ -342,6 +345,76 @@ impl ContributorRegistryContract {
         Ok(())
     }
 
+    pub fn grant_badge(
+        env: Env,
+        executor: Address,
+        proposal_id: u64,
+        contributor_address: Address,
+        badge: Badge,
+    ) -> Result<(), ContributorError> {
+        consume_approval(&env, &executor, proposal_id, &ProposalAction::GrantBadge)?;
+
+        // Ensure contributor exists
+        let _ = Self::get_contributor(env.clone(), contributor_address.clone())?;
+
+        let mut badges: Vec<Badge> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Badges(contributor_address.clone()))
+            .unwrap_or(Vec::new(&env));
+
+        if !badges.contains(badge) {
+            badges.push_back(badge);
+            env.storage()
+                .persistent()
+                .set(&DataKey::Badges(contributor_address.clone()), &badges);
+        }
+
+        BadgeGrantedEvent {
+            contributor: contributor_address,
+            badge,
+            executor,
+        }
+        .publish(&env);
+
+        Ok(())
+    }
+
+    pub fn revoke_badge(
+        env: Env,
+        executor: Address,
+        proposal_id: u64,
+        contributor_address: Address,
+        badge: Badge,
+    ) -> Result<(), ContributorError> {
+        consume_approval(&env, &executor, proposal_id, &ProposalAction::RevokeBadge)?;
+
+        // Ensure contributor exists
+        let _ = Self::get_contributor(env.clone(), contributor_address.clone())?;
+
+        let mut badges: Vec<Badge> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Badges(contributor_address.clone()))
+            .unwrap_or(Vec::new(&env));
+
+        if let Some(index) = badges.first_index_of(badge) {
+            badges.remove(index);
+            env.storage()
+                .persistent()
+                .set(&DataKey::Badges(contributor_address.clone()), &badges);
+        }
+
+        BadgeRevokedEvent {
+            contributor: contributor_address,
+            badge,
+            executor,
+        }
+        .publish(&env);
+
+        Ok(())
+    }
+
     pub fn upgrade(
         env: Env,
         executor: Address,
@@ -385,6 +458,23 @@ impl ContributorRegistryContract {
 
     pub fn get_reputation(env: Env, contributor: Address) -> Result<u64, ContributorError> {
         Ok(Self::get_contributor(env, contributor)?.reputation_score)
+    }
+
+    pub fn get_tier(env: Env, contributor: Address) -> Result<ContributorTier, ContributorError> {
+        let rep = Self::get_reputation(env, contributor)?;
+        Ok(match rep {
+            0..=9 => ContributorTier::Novice,
+            10..=49 => ContributorTier::Builder,
+            50..=99 => ContributorTier::Architect,
+            _ => ContributorTier::Core,
+        })
+    }
+
+    pub fn get_badges(env: Env, contributor: Address) -> Vec<Badge> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::Badges(contributor))
+            .unwrap_or(Vec::new(&env))
     }
 
     pub fn get_contributor(
@@ -902,5 +992,60 @@ mod test {
         // 5. Replay attempt fails
         let new_admin2 = Address::generate(&s.env);
         assert!(client.try_set_admin(&s.alice, &id, &new_admin2).is_err());
+    }
+
+    // ── Badges & Tiers ────────────────────────────────────────
+
+    #[test]
+    fn test_tier_calculation() {
+        let s = setup();
+        let client = ContributorRegistryContractClient::new(&s.env, &s.contract);
+
+        let contributor = Address::generate(&s.env);
+        let handle = soroban_sdk::String::from_str(&s.env, "tier_dev");
+        client.register_contributor(&contributor, &handle);
+
+        assert_eq!(client.get_tier(&contributor), ContributorTier::Novice);
+
+        let id = client.propose(&s.alice, &ProposalAction::UpdateReputation);
+        client.sign(&s.bob, &id);
+        client.update_reputation(&s.alice, &id, &contributor, &20i64);
+        assert_eq!(client.get_tier(&contributor), ContributorTier::Builder);
+
+        let id2 = client.propose(&s.alice, &ProposalAction::UpdateReputation);
+        client.sign(&s.bob, &id2);
+        client.update_reputation(&s.alice, &id2, &contributor, &50i64);
+        assert_eq!(client.get_tier(&contributor), ContributorTier::Architect);
+
+        let id3 = client.propose(&s.alice, &ProposalAction::UpdateReputation);
+        client.sign(&s.bob, &id3);
+        client.update_reputation(&s.alice, &id3, &contributor, &50i64);
+        assert_eq!(client.get_tier(&contributor), ContributorTier::Core);
+    }
+
+    #[test]
+    fn test_grant_and_revoke_badge() {
+        let s = setup();
+        let client = ContributorRegistryContractClient::new(&s.env, &s.contract);
+
+        let contributor = Address::generate(&s.env);
+        let handle = soroban_sdk::String::from_str(&s.env, "badge_dev");
+        client.register_contributor(&contributor, &handle);
+
+        assert_eq!(client.get_badges(&contributor).len(), 0);
+
+        let id = client.propose(&s.alice, &ProposalAction::GrantBadge);
+        client.sign(&s.bob, &id);
+        client.grant_badge(&s.alice, &id, &contributor, &Badge::EarlyAdopter);
+
+        let badges = client.get_badges(&contributor);
+        assert_eq!(badges.len(), 1);
+        assert!(badges.contains(Badge::EarlyAdopter));
+
+        let id2 = client.propose(&s.alice, &ProposalAction::RevokeBadge);
+        client.sign(&s.bob, &id2);
+        client.revoke_badge(&s.alice, &id2, &contributor, &Badge::EarlyAdopter);
+
+        assert_eq!(client.get_badges(&contributor).len(), 0);
     }
 }
