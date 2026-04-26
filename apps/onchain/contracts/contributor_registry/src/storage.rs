@@ -6,6 +6,11 @@ use soroban_sdk::{contracttype, Address, String};
 pub const LEDGER_THRESHOLD: u32 = 100_000;
 pub const LEDGER_BUMP: u32 = 518_400;
 
+// ── Tier thresholds (reputation score) ───────────────────────
+pub const TIER_SILVER_MIN: u64 = 50;
+pub const TIER_GOLD_MIN: u64 = 200;
+pub const TIER_PLATINUM_MIN: u64 = 500;
+
 #[contracttype]
 #[derive(Clone)]
 pub enum DataKey {
@@ -19,6 +24,9 @@ pub enum DataKey {
     MultisigConfig,
     Proposal(u64),
     NextProposalId,
+
+    // ── Badge keys ────────────────────────────────────────────
+    Badges(Address), // contributor -> Vec<Badge>
 }
 
 #[contracttype]
@@ -28,4 +36,24 @@ pub struct ContributorData {
     pub github_handle: String,
     pub reputation_score: u64,
     pub registered_timestamp: u64,
+}
+
+/// Contributor tier derived from reputation score.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ContributorTier {
+    Bronze,
+    Silver,
+    Gold,
+    Platinum,
+}
+
+/// Badges that can be granted to contributors by multisig approval.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum Badge {
+    TopContributor,
+    EarlyAdopter,
+    BugHunter,
+    Mentor,
 }
